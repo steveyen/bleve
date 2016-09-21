@@ -409,7 +409,20 @@ func (i *indexImpl) SearchInContext(ctx context.Context, req *SearchRequest) (sr
 		}
 	}()
 
-	searcher, err := req.Query.Searcher(indexReader, i.m, req.Explain)
+	queryRewriter, ok := ctx.Value(queryRewriterContextKey).(QueryRewriter)
+	if !ok {
+		queryRewriter = standardQueryRewriter
+	}
+
+	query := req.Query
+	if queryRewriter != nil {
+		query, err = queryRewriter.RewriteQuery(ctx, i, req, query)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	searcher, err := query.Searcher(indexReader, i.m, req.Explain)
 	if err != nil {
 		return nil, err
 	}
