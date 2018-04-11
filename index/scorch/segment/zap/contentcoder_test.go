@@ -20,7 +20,7 @@ import (
 	"testing"
 )
 
-func TestChunkContentCoder(t *testing.T) {
+func TestChunkedContentCoder(t *testing.T) {
 
 	tests := []struct {
 		maxDocNum uint64
@@ -59,7 +59,8 @@ func TestChunkContentCoder(t *testing.T) {
 
 	for _, test := range tests {
 
-		cic := newChunkedContentCoder(test.chunkSize, test.maxDocNum)
+		var actual bytes.Buffer
+		cic := newChunkedContentCoder(test.chunkSize, test.maxDocNum, &actual, false)
 		for i, docNum := range test.docNums {
 			err := cic.Add(docNum, test.vals[i])
 			if err != nil {
@@ -67,8 +68,7 @@ func TestChunkContentCoder(t *testing.T) {
 			}
 		}
 		_ = cic.Close()
-		var actual bytes.Buffer
-		_, err := cic.Write(&actual)
+		_, err := cic.Write()
 		if err != nil {
 			t.Fatalf("error writing: %v", err)
 		}
@@ -76,5 +76,51 @@ func TestChunkContentCoder(t *testing.T) {
 		if !reflect.DeepEqual(test.expected, string(actual.Bytes())) {
 			t.Errorf("got:%s, expected:%s", string(actual.Bytes()), test.expected)
 		}
+	}
+}
+
+func TestChunkedContentCoders(t *testing.T) {
+	maxDocNum := uint64(5)
+	chunkSize := uint64(1)
+	docNums := []uint64{0, 1, 2, 3, 4, 5}
+	vals := [][]byte{
+		[]byte("scorch"),
+		[]byte("does"),
+		[]byte("better"),
+		[]byte("than"),
+		[]byte("upside"),
+		[]byte("down"),
+	}
+
+	var actual1, actual2 bytes.Buffer
+	// chunkedContentCoder that writes out at the end
+	cic1 := newChunkedContentCoder(chunkSize, maxDocNum, &actual1, false)
+	// chunkedContentCoder that writes out in chunks
+	cic2 := newChunkedContentCoder(chunkSize, maxDocNum, &actual2, true)
+
+	for i, docNum := range docNums {
+		err := cic1.Add(docNum, vals[i])
+		if err != nil {
+			t.Fatalf("error adding to intcoder: %v", err)
+		}
+		err = cic2.Add(docNum, vals[i])
+		if err != nil {
+			t.Fatalf("error adding to intcoder: %v", err)
+		}
+	}
+	_ = cic1.Close()
+	_ = cic2.Close()
+
+	_, err := cic1.Write()
+	if err != nil {
+		t.Fatalf("error writing: %v", err)
+	}
+	_, err = cic2.Write()
+	if err != nil {
+		t.Fatalf("error writing: %v", err)
+	}
+
+	if !reflect.DeepEqual(string(actual1.Bytes()), string(actual2.Bytes())) {
+		t.Errorf("%s != %s", string(actual1.Bytes()), string(actual2.Bytes()))
 	}
 }
